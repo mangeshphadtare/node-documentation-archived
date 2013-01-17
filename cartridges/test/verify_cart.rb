@@ -7,6 +7,7 @@
 require 'rubygems'
 require 'fileutils'
 require 'logger'
+require 'test/unit'
 
 # Create forward references
 module Assertions
@@ -20,11 +21,11 @@ class CountingFormatter < Logger::Formatter
 
   def initialize
     super
-    @counters = {}
+    @counters = Hash.new(0)
   end
 
   def call(severity, time, progname, msg)
-    @counters[severity] = @counters[severity].nil? ? 1 : @counters[severity] += 1
+    @counters[severity] += 1
     super
   end
 end
@@ -49,26 +50,38 @@ class Runner
 
   include Assertions
   include Utils
+  include Test::Unit::Assertions
 
-  def run
-    # Ensure that required files exist
-    [@required_bin, @required_file].flatten.each do |f|
-      assert_required f
+  # @param [String] cartridge_name
+  # @return [Hash] Counters for each type of message logged
+  def run(cartridge_name)
+    cart_env = Hash.new("")
+
+    # Step into the cartridge directory for these tests. Makes setup easier, shorter paths...
+    FileUtils.chdir(cartridge_name) do
+
+      # Ensure that required files exist
+      [@required_bin, @required_file].flatten.each do |f|
+        assert_required f
+      end
+
+      # Ensure that expected binaries are executable
+      [@required_bin, @optional_bin].flatten.each do |f|
+        assert_executable f if File.exist? f
+      end
+
+      # Emit warning if file is empty
+      [@optional_bin, @optional_file].flatten.each do |f|
+        assert_not_empty f if File.exist? f
+      end
+
+      render_env(load_env) # We need to do this to pretend to be the node platform
+      cart_env = load_env # Now pick up any newly rendered environment variables
     end
 
-    # Ensure that expected binaries are executable
-    [@required_bin, @optional_bin].flatten.each do |f|
-      assert_executable f if File.exist? f
-    end
-
-    # Emit warning if file is empty
-    [@optional_bin, @optional_file].flatten.each do |f|
-      assert_not_empty f if File.exist? f
-    end
-
-    cart_env = load_env
-    render_env(cart_env)
-
+    # Start with the 'setup' command just like node platform
+    exitstatus, results = spawn_env(cart_env,"#{cartridge_name}/bin/setup --version=#{cartridge_name}")
+    assert_equal(0, exitstatus, "setup results: #{results}")
     @logger.formatter.counters
   end
 end
@@ -80,6 +93,7 @@ module Assertions
   end
 
   def assert_not_empty(file)
+    puts "#{file} #{File.stat(file).size}"
     @logger.warn ("#{file} is empty.") if 0 >= File.stat(file).size
   end
 
@@ -125,14 +139,17 @@ module Utils
     }
   end
 
-  # @param [String] path
   # @param [Hash] cart_env
+  # @param [String] path
   def render_erb(cart_env, path)
+    spawn_env(cart_env, "erb -S 2 -- #{path}")
+  end
+
+  def spawn_env(env, command)
     IO.pipe { |read_io, write_io|
-      pid = spawn(cart_env, "erb -S 2 -- #{path}", {:unsetenv_others => true, :in => :close, :out => write_io})
+      pid = spawn(env, command, {:unsetenv_others => true, :in => :close, :out => write_io})
       write_io.close
-      results = read_io.readlines()
-      puts "results >#{results.size}<"
+      results   = read_io.readlines()
       _, status = Process.waitpid2 pid, Process::WNOHANG
       [status.exitstatus, results]
     }
@@ -142,8 +159,13 @@ end
 # If we're being run as a script...
 if __FILE__ == $0
 
+  if ARGV.first.nil?
+    $stderr.puts("Usage: #{File.basename($0)} <cartridge directory>")
+    exit 1
+  end
+
   runner  = Runner.new
-  results = runner.run()
+  results = runner.run ARGV.first
 
   # Only provide summary of errors and warnings
   if  0 == results['ERROR'] && 0 == results['WARN']

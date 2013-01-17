@@ -3,20 +3,24 @@
 # Mock cartridge for testing and verifying node platform code. This is
 # not an example of how to write a well-formed cartridge.
 
-MOCK_STATE=.mock_state/
+source mock-0.0/mock.conf
 
 rm -rf $MOCK_STATE
 mkdir $MOCK_STATE
 touch $MOCK_STATE/setup_called
 
 function error_exit {
-    echo -e "$1\nexit $2" >$MOCK_STATE/setup_failure
-    echo -e $1 1>&2
-    exit $2
+  echo -e "$1\nexit $2" >$MOCK_STATE/setup_failure
+  echo -e $1 1>&2
+  exit $2
 }
 
 if [ ! -d 'mock-0.0' ]; then
-   error_exit "Cartridge directory mock-0.0 is missing" 78
+  error_exit "Cartridge directory mock-0.0 is missing" 78
+fi
+
+if [ 'root' = "$(whoami)" ]; then
+  error_exit "Setup should never be run as root"
 fi
 
 expected_variables="HISTFILE OPENSHIFT_APP_DNS OPENSHIFT_APP_NAME
@@ -46,7 +50,7 @@ case $1 in
             *) error_exit "Illegal command line option: $1" 64 ;;
 esac
 echo "Version: $version" >$MOCK_STATE/setup_version
-echo "OPENSHIFT_MOCK_VERSION=\'$version\'" >mock-0.0/env/OPENSHIFT_MOCK_VERSION
+echo "export OPENSHIFT_MOCK_VERSION=\'$version\'" >mock-0.0/env/OPENSHIFT_MOCK_VERSION
 
 touch $MOCK_STATE/setup_succeed
 exit 0
