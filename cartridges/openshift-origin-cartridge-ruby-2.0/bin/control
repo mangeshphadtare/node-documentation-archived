@@ -1,7 +1,35 @@
 #!/bin/bash -e
 
+HTTPD_CFG_FILE=$RUBY_VERSION/conf.d/httpd_nolog.conf
+
 case $1
   start)
-    /usr/sbin/httpd -C "Include conf.d/*.conf" -f $HTTPD_CFG_FILE -k $1
-    run_user_hook post_start_${cartridge_type}
+    # Called in Application Control
+    # $RUBY_VERSION/bin/run_hook pre_start_${$RUBY_VERSION}
+    /usr/sbin/httpd -C "Include $RUBY_VERSION/conf.d/*.conf" -f $HTTPD_CFG_FILE -k $1
+    # Called in Application Control
+    #$RUBY_VERSION/bin/run_hook post_start_${cartridge_type}
+    ;;
 
+  stop)
+     # Called in Application Control
+     #$RUBY_VERSION/bin/run_hook pre_stop_${$RUBY_VERSION}
+     /usr/sbin/httpd -C "Include ${$RUBY_VERSION}/conf.d/*.conf" -f $HTTPD_CFG_FILE/httpd_nolog.conf -k $1
+     # Called in Application Control
+     #$RUBY_VERSION/bin/run_hook post_stop_${cartridge_type}
+   ;;
+
+  restart)
+    stop
+    start
+    ;;
+
+  reload)
+    ;;
+
+  tidy) ;;
+
+  status) ;;
+
+esac
+exit 0
