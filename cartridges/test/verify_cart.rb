@@ -24,6 +24,13 @@ class CountingFormatter < Logger::Formatter
     @counters = Hash.new(0)
   end
 
+# Shim to count each type of message logged by severity
+#
+# @param [String] severity
+# @param [Time] time
+# @param [String] progname
+# @param [String] msg
+# @return [String] formatted message from super.call()
   def call(severity, time, progname, msg)
     @counters[severity] += 1
     super
@@ -48,9 +55,9 @@ class Runner
     @logger.formatter = CountingFormatter.new
   end
 
+  include Test::Unit::Assertions
   include Assertions
   include Utils
-  include Test::Unit::Assertions
 
   # @param [String] cartridge_name
   # @return [Hash] Counters for each type of message logged
@@ -79,9 +86,19 @@ class Runner
       cart_env = load_env # Now pick up any newly rendered environment variables
     end
 
+    begin
     # Start with the 'setup' command just like node platform
     exitstatus, results = spawn_env(cart_env,"#{cartridge_name}/bin/setup --version=#{cartridge_name}")
-    assert_equal(0, exitstatus, "setup results: #{results}")
+    if 0 == exitstatus
+      @logger.info ("#{cartridge_name} setup was successful")
+    else
+      @logger.error ("#{cartridge_name} setup was unsuccessful: exit status #{exitstatus}\n #{results}")
+    end
+      assert_equal(0, exitstatus, "setup results: #{results}")
+    rescue Exception => e
+      @logger.error("Exception: #{e.class}: #{e}\n#{e.backtrace}")
+    end
+
     @logger.formatter.counters
   end
 end
@@ -93,7 +110,6 @@ module Assertions
   end
 
   def assert_not_empty(file)
-    puts "#{file} #{File.stat(file).size}"
     @logger.warn ("#{file} is empty.") if 0 >= File.stat(file).size
   end
 
